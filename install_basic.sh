@@ -1,6 +1,6 @@
 #!/bin/bash
-# Minimal Installer: PostgreSQL + Google Cloud CLI + GCSFuse
-# Version 1.1 - Installation Only (No Configuration)
+# Minimal Installer: PostgreSQL + gcloud + gcsfuse + pgBackRest
+# Version 1.2 - No Configuration
 
 # Update package lists
 sudo apt-get update
@@ -24,5 +24,13 @@ curl https://packages.cloud.google.com/apt/doc/apt-key.gpg | sudo apt-key add -
 sudo apt-get update
 sudo apt-get install -y fuse gcsfuse
 
-echo "Installation complete: PostgreSQL, gcloud CLI, and gcsfuse are now installed"
-echo "Note: No configuration has been applied (no GCS mounting, PostgreSQL config, etc.)"
+# Install pgBackRest
+sudo apt-get install -y pgbackrest
+
+echo "Installation complete:"
+echo "- PostgreSQL $(psql --version)"
+echo "- Google Cloud CLI $(gcloud --version | head -1)"
+echo "- GCSFuse $(gcsfuse --version)"
+echo "- pgBackRest $(pgbackrest version | head -1)"
+echo ""
+echo "Note: No configuration has been applied"
