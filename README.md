@@ -7,10 +7,7 @@ run script
 
  to enable WAL Archiving , run the script WAL-Enable.sh 
 
- after that 
-
-
-sudo -u postgres pgbackrest --stanza=main stanza-create
+this will enable wal archiviing and initialize the repository for backup 
 
 
 
