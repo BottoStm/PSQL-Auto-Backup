@@ -16,6 +16,18 @@ Run the setup script to prepare your system for backup operations:
 ./prepare.sh
 ```
 
+### Mount Google cloud bucket as filesystem 
+
+```bash
+sudo gcloud auth application-default login
+```
+``` bash
+mkdir -p /pgbackup
+```
+```bash
+gcsfuse psqlbackup /pgbackup
+```
+
 ## 🔄 Backup Options
 
 ### Full Backup
