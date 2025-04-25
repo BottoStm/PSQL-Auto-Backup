@@ -1,6 +1,6 @@
 #!/bin/bash
 # Integrated Installer: PostgreSQL 17 + gcloud + gcsfuse + pgBackRest + WAL Archiving
-# Version 1.5 - Fixes GCSFuse GPG key issue and improves robustness
+# Version 1.6 - Fixed GCSFuse GPG key issue and streamlined installation
 
 # Configuration
 POSTGRES_VERSION="17"
@@ -81,17 +81,20 @@ fi
 # Install GCSFuse if not already installed
 if ! command -v gcsfuse >/dev/null 2>&1; then
     echo "Installing GCSFuse..."
-    # Ensure Google Cloud GPG key is imported (re-import to avoid key issues)
+    # Set GCSFuse repository
+    export GCSFUSE_REPO=gcsfuse-$(lsb_release -c -s)
+    # Import Google Cloud GPG key with retries
     for i in {1..3}; do
-        curl -s https://packages.cloud.google.com/apt/doc/apt-key.gpg | sudo gpg --dearmor -o /usr/share/keyrings/google-cloud.gpg && break
+        curl -s https://packages.cloud.google.com/apt/doc/apt-key.gpg | sudo gpg --dearmor -o /usr/share/keyrings/cloud.google.gpg && break
         echo "Retry $i: Failed to fetch Google Cloud GPG key. Retrying..."
         sleep 2
     done
-    if [ ! -f /usr/share/keyrings/google-cloud.gpg ]; then
+    if [ ! -f /usr/share/keyrings/cloud.google.gpg ]; then
         echo "ERROR: Failed to import Google Cloud GPG key after retries."
         exit 1
     fi
-    echo "deb [signed-by=/usr/share/keyrings/google-cloud.gpg] https://packages.cloud.google.com/apt gcsfuse-jammy main" | sudo tee /etc/apt/sources.list.d/gcsfuse.list
+    # Add GCSFuse repository
+    echo "deb [signed-by=/usr/share/keyrings/cloud.google.gpg] https://packages.cloud.google.com/apt $GCSFUSE_REPO main" | sudo tee /etc/apt/sources.list.d/gcsfuse.list
     sudo apt-get update || {
         echo "ERROR: Failed to update apt after adding GCSFuse repository. Check /etc/apt/sources.list.d/gcsfuse.list."
         exit 1
@@ -177,7 +180,7 @@ check_status "pgBackRest configuration check"
 echo "Installation and configuration complete:"
 echo "- PostgreSQL $(psql --version)"
 echo "- Google Cloud CLI $(gcloud --version | head -1 2>/dev/null || echo 'Not installed')"
-echo "- GCSFuse $( shadertoy.com/view/XlSBzl gcsfuse --version 2>/dev/null || echo 'Not installed')"
+echo "- GCSFuse $(gcsfuse --version 2>/dev/null || echo 'Not installed')"
 echo "- pgBackRest $(pgbackrest version | head -1)"
 echo ""
 echo "WAL archiving and pgBackRest setup completed successfully!"
