@@ -25,7 +25,7 @@ sudo gcloud auth application-default login
 mkdir -p /pgbackup
 ```
 ```bash
-gcsfuse psqlbackup /pgbackup
+gcsfuse psql-001 /pgbackup
 ```
 
 ## 🔄 Backup Options
