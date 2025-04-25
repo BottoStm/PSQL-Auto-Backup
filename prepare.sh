@@ -1,6 +1,6 @@
 #!/bin/bash
 # Integrated Installer: PostgreSQL 17 + gcloud + gcsfuse + pgBackRest + WAL Archiving
-# Version 1.6 - Fixed GCSFuse GPG key issue and streamlined installation
+# Version 1.8 - Fixed pgBackRest config directory creation
 
 # Configuration
 POSTGRES_VERSION="17"
@@ -128,6 +128,11 @@ if [ "$REPO_TYPE" = "gcs" ] && [ -z "$GCS_BUCKET" ]; then
     exit 1
 fi
 
+# Create pgBackRest configuration directory
+sudo mkdir -p /etc/pgbackrest
+check_status "pgBackRest configuration directory creation"
+
+# Write pgBackRest configuration
 cat > "$PGBACKREST_CONFIG" << EOF
 [global]
 repo1-path = ${REPO_PATH}
