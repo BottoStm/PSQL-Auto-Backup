@@ -42,13 +42,6 @@ Capture only the changes made since the last full or incremental backup:
 sudo ./utility.sh incrbackup
 ```
 
-## ♻️ Restore from Backup
-Restore your database from the latest incremental backup:
-```bash
-sudo ./utility.sh restoreincr
-```
-
-
 
 ```bash
 sudo crontab -e
@@ -60,6 +53,17 @@ sudo crontab -e
 # Incremental backup every 5 minutes
 */5 * * * * sudo -u postgres /home/PSQL/utility.sh incrbackup >/var/log/pg_incrbackup.log 2>&1
 ```
+
+
+## ♻️ Restore from Backup
+Restore your database from the latest incremental backup:
+```bash
+sudo ./utility.sh restoreincr
+```
+
+
+
+
 
 
 ## 🧪 Testing Utilities
