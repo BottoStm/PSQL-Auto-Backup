@@ -1,13 +1,14 @@
 #!/bin/bash
-# Utility Script: pgBackRest Full/Incremental Backup and Restore with rsync
-# Version 1.3 - Added backup listing and user prompts before restore
+# Utility Script: pgBackRest Full/Incremental Backup and Restore with lftp
+# Version 1.18 - Fixed lftp local sync with file:// URLs, added debug
 
 # Configuration
 POSTGRES_VERSION="17"
 PG_DATA="/var/lib/postgresql/$POSTGRES_VERSION/main"
 PGBACKREST_CONFIG="/etc/pgbackrest/pgbackrest.conf"
 REPO_PATH="/var/lib/pgbackrest"  # pgBackRest local repository
-BACKUP_PATH="/pgbackup"          # Mounted directory for rsync
+BACKUP_PATH="/pgbackup"          # Mounted directory for sync
+LFTP_PARALLEL=2                  # Number of parallel lftp transfers
 
 # Verify root privileges
 if [ "$(id -u)" -ne 0 ]; then
@@ -23,15 +24,15 @@ check_status() {
     fi
 }
 
-# Function to verify rsync is installed
-ensure_rsync() {
-    if ! command -v rsync >/dev/null 2>&1; then
-        echo "Installing rsync..."
+# Function to verify lftp is installed
+ensure_tools() {
+    if ! command -v lftp >/dev/null 2>&1; then
+        echo "Installing lftp..."
         apt-get update
-        apt-get install -y rsync
-        check_status "rsync installation"
+        apt-get install -y lftp
+        check_status "lftp installation"
     else
-        echo "rsync is already installed."
+        echo "lftp is already installed."
     fi
 }
 
@@ -56,6 +57,17 @@ verify_backup_path() {
     fi
 }
 
+# Function to check and create stanza
+ensure_stanza() {
+    if [ ! -f "$REPO_PATH/backup/main/backup.info" ]; then
+        echo "Stanza 'main' not initialized. Creating stanza..."
+        sudo -u postgres pgbackrest --stanza=main stanza-create
+        check_status "Stanza creation"
+    else
+        echo "Stanza 'main' already initialized."
+    fi
+}
+
 # Function to validate target time format for PITR
 validate_target_time() {
     local target_time="$1"
@@ -73,22 +85,53 @@ list_backups() {
     check_status "Listing backups"
 }
 
+# Function to verify and set permissions
+verify_permissions() {
+    echo "Setting permissions for $REPO_PATH and $BACKUP_PATH..."
+    find "$REPO_PATH" -exec chown postgres:postgres {} \;
+    find "$REPO_PATH" -type d -exec chmod 750 {} \;
+    find "$REPO_PATH" -type f -exec chmod 640 {} \;
+    find "$BACKUP_PATH" -exec chown postgres:postgres {} \;
+    find "$BACKUP_PATH" -type d -exec chmod 750 {} \;
+    find "$BACKUP_PATH" -type f -exec chmod 640 {} \;
+}
+
 # Function to sync repository to /pgbackup
 sync_to_backup() {
     echo "Syncing $REPO_PATH to $BACKUP_PATH..."
-    rsync -av --delete "$REPO_PATH/" "$BACKUP_PATH/" --chown=postgres:postgres
-    check_status "rsync to $BACKUP_PATH"
-    chmod 750 "$BACKUP_PATH"
-    chown postgres:postgres "$BACKUP_PATH"
+    # Ensure destination subdirectories exist
+    for subdir in archive backup; do
+        mkdir -p "$BACKUP_PATH/$subdir"
+        chown postgres:postgres "$BACKUP_PATH/$subdir"
+        chmod 750 "$BACKUP_PATH/$subdir"
+    done
+    # Verify permissions
+    verify_permissions
+    # Sync using lftp mirror with file:// for local paths
+    echo "Mirroring files from $REPO_PATH to $BACKUP_PATH..."
+    sudo lftp -e "mirror --delete --parallel=$LFTP_PARALLEL --verbose file://$REPO_PATH $BACKUP_PATH; exit"
+    check_status "lftp sync to $BACKUP_PATH"
+    # Set final permissions
+    verify_permissions
 }
 
 # Function to sync from /pgbackup to repository
 sync_from_backup() {
     echo "Syncing $BACKUP_PATH to $REPO_PATH..."
-    rsync -av --delete "$BACKUP_PATH/" "$REPO_PATH/" --chown=postgres:postgres
-    check_status "rsync from $BACKUP_PATH"
-    chmod 750 "$REPO_PATH"
-    chown postgres:postgres "$REPO_PATH"
+    # Ensure destination subdirectories exist
+    for subdir in archive backup; do
+        mkdir -p "$REPO_PATH/$subdir"
+        chown postgres:postgres "$REPO_PATH/$subdir"
+        chmod 750 "$REPO_PATH/$subdir"
+    done
+    # Verify permissions
+    verify_permissions
+    # Sync using lftp mirror with file:// for local paths
+    echo "Mirroring files from $BACKUP_PATH to $REPO_PATH..."
+    sudo lftp -e "mirror --delete --parallel=$LFTP_PARALLEL --verbose file://$BACKUP_PATH $REPO_PATH; exit"
+    check_status "lftp sync from $BACKUP_PATH"
+    # Set final permissions
+    verify_permissions
 }
 
 # Function to stop PostgreSQL
@@ -136,9 +179,10 @@ if [ $# -lt 1 ]; then
 fi
 
 # Verify prerequisites
-ensure_rsync
+ensure_tools
 verify_pgbackrest_config
 verify_backup_path
+ensure_stanza
 
 case "$1" in
     fullbackup)
@@ -193,7 +237,7 @@ case "$1" in
                 check_status "Incremental backup restore"
                 ;;
             2)
-                read -p "Enter target time (YYYY-MM-DD HH:MM:SS, e.g., 2025-04-25 11:59:00): " target_time
+                read -p "Enter target time (YYYY-MM-DD HH:MM:SS, e.g., '2025-04-25 11:59:00): " target_time
                 validate_target_time "$target_time"
                 echo "Restoring to target time: $target_time"
                 stop_postgresql
@@ -223,8 +267,9 @@ esac
 # PITR Usage Example (Commented)
 echo "PITR Example for restoreincr:"
 cat << 'EOF'
-# To restore to a specific point in time (e.g., 2025-04-25 11:59:00):
-sudo ./utility.sh restoreincr "2025-04-25 11:59:00"
+# To restore to a specific point in time (e.g., '2025-04-25 11:59:00'):
+sudo ./utility.sh restoreincr
+# Choose option 2 and enter: 2025-04-25 11:59:00
 # This will:
 # 1. Sync /pgbackup to /var/lib/pgbackrest
 # 2. Restore the full backup
