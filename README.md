@@ -53,6 +53,22 @@ sudo ./prepare.sh
 
 ---
 
+
+
+### 4. Mount Google cloud bucket as filesystem 
+
+```bash
+sudo gcloud auth application-default login
+```
+``` bash
+mkdir -p /pgbackup
+```
+```bash
+gcsfuse psqlbackup /pgbackup
+```
+
+
+
 ## 🔁 Backup Process
 
 ### Types of Backups:
