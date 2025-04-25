@@ -1,6 +1,6 @@
 #!/bin/bash
 # Integrated Installer: PostgreSQL 17 + gcloud + gcsfuse + pgBackRest + WAL Archiving
-# Version 1.4 - Installs missing components and configures WAL with pgBackRest
+# Version 1.5 - Fixes GCSFuse GPG key issue and improves robustness
 
 # Configuration
 POSTGRES_VERSION="17"
@@ -70,7 +70,7 @@ fi
 if ! command -v gcloud >/dev/null 2>&1; then
     echo "Installing Google Cloud CLI..."
     sudo apt-get install -y apt-transport-https ca-certificates gnupg curl
-    curl https://packages.cloud.google.com/apt/doc/apt-key.gpg | sudo gpg --dearmor -o /usr/share/keyrings/google-cloud.gpg
+    curl -s https://packages.cloud.google.com/apt/doc/apt-key.gpg | sudo gpg --dearmor -o /usr/share/keyrings/google-cloud.gpg
     echo "deb [signed-by=/usr/share/keyrings/google-cloud.gpg] https://packages.cloud.google.com/apt cloud-sdk main" | sudo tee /etc/apt/sources.list.d/google-cloud-sdk.list
     sudo apt-get update && sudo apt-get install -y google-cloud-cli
     check_status "Google Cloud CLI installation"
@@ -81,8 +81,21 @@ fi
 # Install GCSFuse if not already installed
 if ! command -v gcsfuse >/dev/null 2>&1; then
     echo "Installing GCSFuse..."
+    # Ensure Google Cloud GPG key is imported (re-import to avoid key issues)
+    for i in {1..3}; do
+        curl -s https://packages.cloud.google.com/apt/doc/apt-key.gpg | sudo gpg --dearmor -o /usr/share/keyrings/google-cloud.gpg && break
+        echo "Retry $i: Failed to fetch Google Cloud GPG key. Retrying..."
+        sleep 2
+    done
+    if [ ! -f /usr/share/keyrings/google-cloud.gpg ]; then
+        echo "ERROR: Failed to import Google Cloud GPG key after retries."
+        exit 1
+    fi
     echo "deb [signed-by=/usr/share/keyrings/google-cloud.gpg] https://packages.cloud.google.com/apt gcsfuse-jammy main" | sudo tee /etc/apt/sources.list.d/gcsfuse.list
-    sudo apt-get update
+    sudo apt-get update || {
+        echo "ERROR: Failed to update apt after adding GCSFuse repository. Check /etc/apt/sources.list.d/gcsfuse.list."
+        exit 1
+    }
     sudo apt-get install -y fuse gcsfuse
     check_status "GCSFuse installation"
 else
@@ -164,7 +177,7 @@ check_status "pgBackRest configuration check"
 echo "Installation and configuration complete:"
 echo "- PostgreSQL $(psql --version)"
 echo "- Google Cloud CLI $(gcloud --version | head -1 2>/dev/null || echo 'Not installed')"
-echo "- GCSFuse $(gcsfuse --version 2>/dev/null || echo 'Not installed')"
+echo "- GCSFuse $( shadertoy.com/view/XlSBzl gcsfuse --version 2>/dev/null || echo 'Not installed')"
 echo "- pgBackRest $(pgbackrest version | head -1)"
 echo ""
 echo "WAL archiving and pgBackRest setup completed successfully!"
