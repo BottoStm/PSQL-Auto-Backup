@@ -55,10 +55,10 @@ sudo crontab -e
 Add the following entries:
 ```bash
 # Daily full backup at 2 AM
-0 2 * * * sudo -u postgres /home/PSQL/utility.sh fullbackup >/var/log/pg_fullbackup.log 2>&1
+0 2 * * * sudo -u postgres /home/PSQL-Auto-Backup/utility.sh fullbackup >/var/log/pg_fullbackup.log 2>&1
 
 # Incremental backup every 5 minutes
-*/5 * * * * sudo -u postgres /home/PSQL/utility.sh incrbackup >/var/log/pg_incrbackup.log 2>&1
+*/5 * * * * sudo -u postgres /home/PSQL-Auto-Backup/utility.sh incrbackup >/var/log/pg_incrbackup.log 2>&1
 ```
 
 ## ♻️ Restore from Backup
