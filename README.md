@@ -33,6 +33,35 @@ The `prepare.sh` script performs the following:
 
 ## 💡 How to Use
 
+How to Use
+Save as test.sh and make executable:
+
+bash
+chmod +x test.sh
+Run commands directly (script handles sudo internally):
+
+bash
+./test.sh setup       # Create database and table
+./test.sh add         # Add 10 records
+./test.sh add 25      # Add 25 records
+./test.sh validate    # Check data exists
+./test.sh delete      # Remove all data
+./test.sh cleanup     # Delete entire database (with confirmation)
+Key Features
+Self-contained - no external dependencies or setup needed
+
+Automatic sudo handling for PostgreSQL operations
+
+Includes safety confirmation for destructive operations
+
+Checks if database exists before trying to create
+
+Simple command structure while being fully functional
+
+The script will prompt for your sudo password when needed for PostgreSQL operations, but otherwise provides a clean user experience.
+
+
+
 ### 1. Save and Make Script Executable
 ```bash
 curl -O https://yourdomain.com/prepare.sh
