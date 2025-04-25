@@ -1,6 +1,6 @@
 #!/bin/bash
 # Utility Script: pgBackRest Full/Incremental Backup and Restore with rsync
-# Version 1.0 - Manages local backups and restores with /pgbackup sync
+# Version 1.3 - Added backup listing and user prompts before restore
 
 # Configuration
 POSTGRES_VERSION="17"
@@ -23,6 +23,18 @@ check_status() {
     fi
 }
 
+# Function to verify rsync is installed
+ensure_rsync() {
+    if ! command -v rsync >/dev/null 2>&1; then
+        echo "Installing rsync..."
+        apt-get update
+        apt-get install -y rsync
+        check_status "rsync installation"
+    else
+        echo "rsync is already installed."
+    fi
+}
+
 # Function to verify pgBackRest configuration
 verify_pgbackrest_config() {
     if [ ! -f "$PGBACKREST_CONFIG" ]; then
@@ -42,6 +54,23 @@ verify_backup_path() {
         echo "ERROR: Backup directory $BACKUP_PATH not found or not mounted."
         exit 1
     fi
+}
+
+# Function to validate target time format for PITR
+validate_target_time() {
+    local target_time="$1"
+    # Check if the time matches YYYY-MM-DD HH:MM:SS format
+    if [[ ! "$target_time" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}\ [0-9]{2}:[0-9]{2}:[0-9]{2}$ ]]; then
+        echo "ERROR: Invalid target time format. Use 'YYYY-MM-DD HH:MM:SS' (e.g., '2025-04-25 11:59:00')."
+        exit 1
+    fi
+}
+
+# Function to list available backups
+list_backups() {
+    echo "Available backups:"
+    sudo -u postgres pgbackrest --stanza=main info
+    check_status "Listing backups"
 }
 
 # Function to sync repository to /pgbackup
@@ -106,7 +135,8 @@ if [ $# -lt 1 ]; then
     usage
 fi
 
-# Verify pgBackRest and /pgbackup
+# Verify prerequisites
+ensure_rsync
 verify_pgbackrest_config
 verify_backup_path
 
@@ -117,7 +147,7 @@ case "$1" in
         check_status "Full backup"
         sync_to_backup
         echo "Full backup completed and synced to $BACKUP_PATH."
-        sudo -u postgres pgbackrest --stanza=main info
+        list_backups
         ;;
     incrbackup)
         echo "Performing incremental backup..."
@@ -125,10 +155,17 @@ case "$1" in
         check_status "Incremental backup"
         sync_to_backup
         echo "Incremental backup completed and synced to $BACKUP_PATH."
-        sudo -u postgres pgbackrest --stanza=main info
+        list_backups
         ;;
     restorefull)
         echo "Restoring full backup..."
+        list_backups
+        echo "The latest full backup will be restored."
+        read -p "Proceed with restore? (y/n): " confirm
+        if [ "$confirm" != "y" ]; then
+            echo "Restore cancelled."
+            exit 0
+        fi
         stop_postgresql
         sync_from_backup
         prepare_data_directory
@@ -140,16 +177,40 @@ case "$1" in
         ;;
     restoreincr)
         echo "Restoring full + incremental backup..."
-        stop_postgresql
-        sync_from_backup
-        prepare_data_directory
-        if [ -n "$2" ]; then
-            echo "Restoring to target time: $2"
-            sudo -u postgres pgbackrest --stanza=main --type=time --target="$2" restore
-        else
-            sudo -u postgres pgbackrest --stanza=main restore
-        fi
-        check_status "Incremental backup restore"
+        list_backups
+        echo "Options:"
+        echo "1. Restore to the latest available point (full + incremental + WAL)"
+        echo "2. Restore to a specific point in time (PITR)"
+        echo "3. Cancel"
+        read -p "Enter choice (1/2/3): " choice
+        case "$choice" in
+            1)
+                echo "Restoring to latest available point..."
+                stop_postgresql
+                sync_from_backup
+                prepare_data_directory
+                sudo -u postgres pgbackrest --stanza=main restore
+                check_status "Incremental backup restore"
+                ;;
+            2)
+                read -p "Enter target time (YYYY-MM-DD HH:MM:SS, e.g., 2025-04-25 11:59:00): " target_time
+                validate_target_time "$target_time"
+                echo "Restoring to target time: $target_time"
+                stop_postgresql
+                sync_from_backup
+                prepare_data_directory
+                sudo -u postgres pgbackrest --stanza=main --type=time --target="$target_time" restore
+                check_status "Incremental backup restore (PITR)"
+                ;;
+            3)
+                echo "Restore cancelled."
+                exit 0
+                ;;
+            *)
+                echo "ERROR: Invalid choice. Use 1, 2, or 3."
+                exit 1
+                ;;
+        esac
         start_postgresql
         echo "Full + incremental backup restored successfully."
         sudo -u postgres psql -c "SELECT now();"
@@ -158,5 +219,17 @@ case "$1" in
         usage
         ;;
 esac
+
+# PITR Usage Example (Commented)
+echo "PITR Example for restoreincr:"
+cat << 'EOF'
+# To restore to a specific point in time (e.g., 2025-04-25 11:59:00):
+sudo ./utility.sh restoreincr "2025-04-25 11:59:00"
+# This will:
+# 1. Sync /pgbackup to /var/lib/pgbackrest
+# 2. Restore the full backup
+# 3. Apply incremental backups
+# 4. Replay WAL segments up to 2025-04-25 11:59:00
+EOF
 
 echo "Operation completed successfully."
