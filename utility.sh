@@ -154,7 +154,9 @@ start_postgresql() {
 prepare_data_directory() {
     echo "Preparing data directory $PG_DATA..."
     if [ -d "$PG_DATA" ]; then
-        mv "$PG_DATA" "$PG_DATA.bak"
+        timestamp=$(date +%Y%m%d-%H%M%S)
+mv "$PG_DATA" "${PG_DATA}.bak.$timestamp"
+
         check_status "Backing up existing data directory"
     fi
     mkdir -p "$PG_DATA"
